@@ -1,5 +1,8 @@
 import pandas as pd
 import numpy as np
+from sklearn import preprocessing
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score
 
 def load_data():
     print('loading data')
@@ -12,20 +15,11 @@ def load_data():
     train_df.set_index('ticket_id', inplace=True)
     test_df.set_index('ticket_id', inplace=True)
     
-    #drop entries for which compliance is "not responsible", i.e. those whose value is not 0 or 1 but NaN
+    #drop entries for which compliance is "not responsible", i.e. those whose value is NaN instead of binary
     train_df.dropna(subset=['compliance'], inplace=True)
-    
-    return train_df, test_df
-
-def process_data(train_df,test_df):
-    print('processing data')
-    
     return train_df, test_df
 
 def learn_data(train_df,test_df):
-    from sklearn import preprocessing
-    from sklearn.ensemble import RandomForestClassifier
-    from sklearn.model_selection import cross_val_score
     print('learning data')
 
     features = list(test_df.columns)
@@ -36,15 +30,12 @@ def learn_data(train_df,test_df):
     
     Xmean = X.mean()
     Xstd = X.std()
-        
     X = (X - Xmean)*(1/Xstd)
     X_test = (test_df - Xmean)*(1/Xstd)
     
     clf = RandomForestClassifier(max_depth=25)
-    
     scores = cross_val_score(clf, X, Y, cv=5, scoring='roc_auc')
     print(scores)
-    print(np.mean(scores))
     
     clf.fit(X, Y)
     y_pred = clf.predict_proba(X_test)
