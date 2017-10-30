@@ -1,61 +1,59 @@
+#!/usr/bin/env python3
+
 import pandas as pd
 import numpy as np
+from sklearn import preprocessing
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score
+import matplotlib.pyplot as plt
+from sklearn.model_selection import validation_curve
 
 def load_data():
     print('loading data')
     
     #read the training and test data in as dataframes
-    train_df = pd.read_csv('train.csv', encoding='latin-1')[::]
-    test_df = pd.read_csv('test.csv', encoding='latin-1')
+    train_df = pd.read_csv('data/train.csv', encoding='latin-1', usecols= ['ticket_id', 'ticket_issued_date', 'hearing_date', 'violation_code', 'disposition', 'fine_amount', 'discount_amount', 'judgment_amount','compliance'], dtype = {'ticket_id': np.int64, 'ticket_issued_date': str, 'hearing_date': str, 'violation_code': str, 'disposition': str, 'fine_amount': np.float64, 'discount_amount': np.float64, 'judgment_amount': np.float64,'compliance': np.float16})
+    test_df = pd.read_csv('data/test.csv', encoding='latin-1', usecols= ['ticket_id', 'ticket_issued_date', 'hearing_date', 'violation_code', 'disposition', 'fine_amount', 'discount_amount', 'judgment_amount'], dtype = {'ticket_id': np.int64, 'ticket_issued_date': str, 'hearing_date': str, 'violation_code': str, 'disposition': str, 'fine_amount': np.float64, 'discount_amount': np.float64, 'judgment_amount': np.float64})
+
+    #The following columns were not included.
+    #*violator's mailing address:
+    #['mailing_address_str_number', 'mailing_address_str_name', 'city', 'state','zip_code', 'non_us_str_code', 'country']
+    #*specific names:
+    #['agency_name', 'inspector_name', 'violator_name']
+    #*description (because we have a violation code):
+    #['violation_description']
+    #*all standard fee information:
+    #['admin_fee', 'state_fee', 'late_fee']
+    #*violation zip code because it was not recorded apparently:
+    #['violation zip code']
+    #*compliance and payment information (present in training set only):
+    #['payment_amount', 'payment_date', 'payment_status','balance_due','collection_status','compliance_detail']
+    #*clean_up_cost because it is always NaN in the training set, but not necessarily in test set:
+    #['clean_up_cost']
+    #*grafitti_status because it is always 0 in the training set, but not necessarily in test set:
+    #['grafitti_status']
+    #*for now, also the location of the infraction:
+    #['violation_street_number', 'violation_street_name']
     
     #set ticket_id as the index for both
     train_df.set_index('ticket_id', inplace=True)
     test_df.set_index('ticket_id', inplace=True)
+    return train_df, test_df
+
+def process_data(train_df,test_df):
+    print('processing data')
     
-    #drop entries for which compliance is "not responsible", i.e. those whose value is not 0 or 1 but NaN
+    #drop entries for which compliance is "not responsible", i.e. those valued NaN instead of binary
     train_df.dropna(subset=['compliance'], inplace=True)
     
-    #remove some entries that are specific
-    #train_df = train_df[train_df.country=='USA'] #remove 11 entries whose mailing address is abroad
+    #make compliance column integer
+    train_df.compliance = train_df.compliance.apply(np.int64)
     
-    #drop all info to do with violator's mailing address columns
-    for col in ['mailing_address_str_number', 'mailing_address_str_name', 'city', 'state', 
-                   'zip_code', 'non_us_str_code', 'country']:
-        train_df.drop(col, axis=1, inplace=True)
-        test_df.drop(col, axis=1, inplace=True)
-        
-    #drop all info to do with names of agency, inspector and violator
-    for col in ['agency_name', 'inspector_name', 'violator_name']:
-        train_df.drop(col, axis=1, inplace=True)
-        test_df.drop(col, axis=1, inplace=True)
+    #there is one NaN entry in training set's fine_amount, we drop that entry
+    train_df.dropna(subset=['fine_amount'], inplace=True)
 
-    #drop violation description since we have an ID
-    train_df.drop('violation_description', axis=1, inplace=True)
-    test_df.drop('violation_description', axis=1, inplace=True)
-
-    #drop fee information
-    for col in ['admin_fee', 'state_fee', 'late_fee']:
-        train_df.drop(col, axis=1, inplace=True)
-        test_df.drop(col, axis=1, inplace=True)
-
-    #drop violation zip code since it was not recorded apparently
-    train_df.drop('violation_zip_code', axis=1, inplace=True)
-    test_df.drop('violation_zip_code', axis=1, inplace=True)
-
-    #drop some compliance information (present in training only) that appears to be redundant
-    for col in ['payment_amount', 'payment_date', 'payment_status','balance_due','collection_status','compliance_detail']:
-        train_df.drop(col, axis=1, inplace=True)
-        
-    #training's clean_up_cost is always zero, but it is non-zero in test set, we will drop therefore
-    train_df.drop('clean_up_cost', axis=1, inplace=True)
-    test_df.drop('clean_up_cost', axis=1, inplace=True)
-    
-    #training's grafitti_status is always NaN, but may be non-zero in test set, we will drop therefore
-    train_df.drop('grafitti_status', axis=1, inplace=True)
-    test_df.drop('grafitti_status', axis=1, inplace=True)
-    
     #convert date columns into four new columns: year, month, day, dayofweek
-    for col in ['ticket_issued_date', 'hearing_date']:    
+    for col in ['ticket_issued_date', 'hearing_date']:
         day_time = pd.to_datetime(train_df[col])
         train_df.drop(col, axis=1, inplace=True)
         train_df[col[:-4]+'month'] = np.array(day_time.dt.month)
@@ -69,53 +67,26 @@ def load_data():
         test_df[col[:-4]+'year'] = np.array(day_time.dt.year)
         test_df[col[:-4]+'day'] = np.array(day_time.dt.day)
         test_df[col[:-4]+'dayofweek'] = np.array(day_time.dt.dayofweek)
-    
-    #make compliance column integer
-    cols = ['compliance']
-    train_df[cols] = train_df[cols].applymap(np.int64)
-    
-    #make other columns integer
-    cols = ['violation_street_number','fine_amount','discount_amount']
-    train_df[cols] = train_df[cols].applymap(np.int64)
-    test_df[cols] = test_df[cols].applymap(np.int64)
 
-    #note that issue_date is never NaN, while hearing_date may be
-    #we will replace those NaNs by zero
+    #hearing_date may be NaN, we will replace those NaNs by -1
     cols = ['hearing_month','hearing_day','hearing_year','hearing_dayofweek']
     for col in cols:
         train_df[col].fillna(-1, inplace=True) #dayofweek can be 0, so setting to 0 is not a good idea
         test_df[col].fillna(-1, inplace=True)
     train_df[cols] = train_df[cols].applymap(np.int64)
     test_df[cols] = test_df[cols].applymap(np.int64)
-    
-    #FOR NOW: we drop the loation of the violation
-    for col in ['violation_street_number', 'violation_street_name']:
-        train_df.drop(col, axis=1, inplace=True)
-        test_df.drop(col, axis=1, inplace=True)
-    
-    ##some diagnostics:
-     #output all columns
+
+    #some tools:
     #print(list(train_df.columns.values))
-    # #print datatypes for the columns
-    #for col in train_df.columns:
-    #    print(train_df[col].dtype, col)
-     #count and print the occurrences of number in a column
-    #vc = train_df.disposition.value_counts(dropna=False)
-    #print(vc)
-     #print out columns and shape of dataframe for info
-    #print(list(train_df.columns.values))
-     #print shape of the data
     #print(train_df.shape)
-    #print(test_df.shape)
-    return train_df, test_df
-
-def process_data(train_df,test_df):
-    print('processing data')
-
+    #print(train_df.dtypes)
+    #print(train_df.fine_amount.value_counts(dropna=False))
+    #print(test_df.isnull().any())
+        
     #select the columns that are not float or int so we can make those features categorical
-    cols = test_df.select_dtypes(exclude=['float', 'int']).columns
-    concat_df = pd.concat((train_df[cols], test_df[cols]), axis=0, verify_integrity=True)
-    
+    catcols = test_df.select_dtypes(exclude=['float', 'int']).columns
+    concat_df = pd.concat((train_df[catcols], test_df[catcols]), axis=0, verify_integrity=True)
+
     #clean up the violation codes: remove characters after space and bracket, remove codes without dash
     concat_df['violation_code'] = concat_df['violation_code'].apply(lambda x: x.split(' ')[0])
     concat_df['violation_code'] = concat_df['violation_code'].apply(lambda x: x.split('(')[0])
@@ -129,9 +100,9 @@ def process_data(train_df,test_df):
     #set a small number of disposition descriptions codes with very few appearances to 'misc'
     counts = concat_df['disposition'].value_counts()
     concat_df['disposition'][concat_df['disposition'].isin(counts[counts < 10].index)] = 'Misc'
-    
+
     #make the features categorical
-    for col in cols:
+    for col in catcols:
         dummies = pd.get_dummies(concat_df[col],sparse=True)
         concat_df[dummies.columns] = dummies
         concat_df.drop(col, axis=1, inplace=True)
@@ -141,14 +112,6 @@ def process_data(train_df,test_df):
     #pour back into train and test set
     train_df[concat_df.columns] = concat_df.loc[train_df.index]
     test_df[concat_df.columns] = concat_df.loc[test_df.index]
-    
-    #show columns
-    #print(list(train_df.columns.values))
-    
-    #for col in list(test_df.columns.values):
-    #    print('----',col)
-    #    vc = train_df[col].value_counts(dropna=False)
-    #    print(vc)
     
     return train_df, test_df
 
