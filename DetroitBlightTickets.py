@@ -35,7 +35,7 @@ def learn_data(train_df,test_df):
     X = (X - Xmean)*(1/Xstd)
     X_test = (test_df - Xmean)*(1/Xstd)
     
-    clf = RandomForestClassifier(max_depth=25)
+    clf = RandomForestClassifier(max_depth=15)
     scores = cross_val_score(clf, X, Y, cv=5, scoring='roc_auc')
     print(scores)
     
@@ -50,10 +50,10 @@ def learn_data(train_df,test_df):
     return result_sr
 
 def plot_validation_curve(X,Y):
-    param_range = np.linspace(10, 40, 4)
-    
-    train_scores, test_scores = validation_curve(RandomForestClassifier(), X, Y, param_name="max_depth", param_range=param_range,
-    cv=5, scoring="roc_auc", n_jobs=1)
+    param_range = np.linspace(2, 16, 8)
+    print('range of parameter max_depth:',param_range)
+    train_scores, test_scores = validation_curve(RandomForestClassifier(), X, Y, param_name="max_depth",
+                                                 param_range=param_range,cv=5, scoring="roc_auc", n_jobs=1)
     train_scores_mean = np.mean(train_scores, axis=1)
     train_scores_std = np.std(train_scores, axis=1)
     test_scores_mean = np.mean(test_scores, axis=1)
