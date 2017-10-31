@@ -121,6 +121,7 @@ def learn_data(train_df,test_df):
 
     features = list(test_df.columns)
     response = ['compliance']
+    #features = ['fine_amount', 'discount_amount', 'judgment_amount']
 
     X = train_df[features]
     Y = np.array(train_df[response]).ravel()
@@ -128,16 +129,11 @@ def learn_data(train_df,test_df):
     
     #normalize the numerical columns
     numcols = list(X.select_dtypes(include=['float'],exclude=['int']).columns)
-    numcols = ['fine_amount', 'discount_amount', 'judgment_amount']
-    #print(X.shape)
     for col in numcols:
-        #print(col)
         X_col = X[col].values.astype(float)
         X_test_col = X_test[col].values.astype(float)
-        #print(X_col,test_df_col)
         col_mean = X_col.mean()
         col_std = X_col.std()
-        #print(col_mean,col_std)
         X[col+'_norm'] = (X_col-col_mean)*(1/col_std)
         X_test[col+'_norm'] = (X_test_col-col_mean)*(1/col_std)
 
