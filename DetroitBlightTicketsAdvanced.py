@@ -4,9 +4,10 @@ import pandas as pd
 import numpy as np
 from sklearn import preprocessing
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import validation_curve, cross_val_score
+from sklearn.linear_model import SGDClassifier, Perceptron
+from sklearn.linear_model import PassiveAggressiveClassifier
 import matplotlib.pyplot as plt
-from sklearn.model_selection import validation_curve
 
 def load_data():
     print('loading data')
@@ -123,6 +124,7 @@ def learn_data(train_df,test_df):
 
     X = train_df[features]
     Y = np.array(train_df[response]).ravel()
+    X_test = test_df[features]
     
     #normalize the numerical columns
     numcols = list(X.select_dtypes(include=['float'],exclude=['int']).columns)
@@ -131,21 +133,25 @@ def learn_data(train_df,test_df):
     for col in numcols:
         #print(col)
         X_col = X[col].values.astype(float)
-        test_df_col = test_df[col].values.astype(float)
+        X_test_col = X_test[col].values.astype(float)
         #print(X_col,test_df_col)
         col_mean = X_col.mean()
-        col_std = test_df_col.std()
+        col_std = X_col.std()
         #print(col_mean,col_std)
         X[col+'_norm'] = (X_col-col_mean)*(1/col_std)
-        test_df[col+'_norm'] = (test_df_col-col_mean)*(1/col_std)
+        X_test[col+'_norm'] = (X_test_col-col_mean)*(1/col_std)
 
     for col in numcols:
         X.drop(col, axis=1, inplace=True)
-        test_df.drop(col, axis=1, inplace=True)
+        X_test.drop(col, axis=1, inplace=True)
+    
+    classifiers = {"SGD": SGDClassifier(penalty='l1',max_iter=5),"SGD-Perceptron": Perceptron(max_iter=5),"Passive-Aggressive": PassiveAggressiveClassifier(loss='hinge', C=1.2,max_iter=5),"Random-Forest": RandomForestClassifier(max_depth=15)}
 
-    clf = RandomForestClassifier(max_depth=15)
-    scores = cross_val_score(clf, X, Y, cv=5, scoring='roc_auc')
-    print(scores)
+    for classifier_type in list(classifiers.keys()):
+        print('------',classifier_type)
+        clf = classifiers[classifier_type]
+        scores = cross_val_score(clf, X, Y, cv=5, scoring='roc_auc')
+        print(scores)
 
     plot_validation_curve(X,Y)
     quit()
@@ -158,10 +164,10 @@ def learn_data(train_df,test_df):
     return result_sr
 
 def plot_validation_curve(X,Y):
-    param_range = np.linspace(5, 45, 9)
+    param_range = np.linspace(2, 30, 15)
     print('range of parameter max_depth:',param_range)
     train_scores, test_scores = validation_curve(RandomForestClassifier(), X, Y, param_name="max_depth",
-                                                 param_range=param_range,cv=5, scoring="roc_auc", n_jobs=1)
+                                                 param_range=param_range,cv=5, scoring="roc_auc", n_jobs=3)
     train_scores_mean = np.mean(train_scores, axis=1)
     train_scores_std = np.std(train_scores, axis=1)
     test_scores_mean = np.mean(test_scores, axis=1)
@@ -177,7 +183,9 @@ def plot_validation_curve(X,Y):
     plt.plot(param_range, test_scores_mean, label="Cross-validation score",color="navy", lw=lw)
     plt.fill_between(param_range, test_scores_mean - test_scores_std,test_scores_mean + test_scores_std, alpha=0.2,color="navy", lw=lw)
     plt.legend(loc="best")
-    plt.show()
+    plt.savefig('RandomForestGrid.pdf')
+    #plt.show()
+
 
 def blight_model():
     train_df, test_df = load_data()
